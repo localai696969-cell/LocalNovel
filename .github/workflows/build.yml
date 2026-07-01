@@ -29,6 +29,15 @@ jobs:
         working-directory: scaffold
         run: flutter pub get
 
+      - name: Tăng bộ nhớ ảo để tránh hết RAM khi build
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
       - name: Build APK
         working-directory: scaffold
         run: flutter build apk --release

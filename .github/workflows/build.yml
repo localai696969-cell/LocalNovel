@@ -1,0 +1,40 @@
+name: Build APK
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+
+      - name: Giải nén code đã upload
+        run: unzip truong_thien_flutter.zip -d extracted
+
+      - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
+        run: flutter create --org com.truongthien --project-name truong_thien scaffold
+
+      - name: Ghép code Dart đã viết vào khung vừa sinh
+        run: |
+          rm -rf scaffold/lib
+          cp -r extracted/truong_thien/lib scaffold/lib
+          cp extracted/truong_thien/pubspec.yaml scaffold/pubspec.yaml
+
+      - name: Thêm quyền Internet cho Android
+        run: sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
+
+      - name: Cài thư viện
+        working-directory: scaffold
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: scaffold
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: truong-thien-apk
+          path: scaffold/build/app/outputs/flutter-apk/app-release.apk

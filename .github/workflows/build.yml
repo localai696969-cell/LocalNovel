@@ -16,19 +16,13 @@ jobs:
       - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
         run: flutter create --org com.localnovel --project-name local_novel scaffold
 
-      - name: Xem cú pháp thật của file Gradle (để chẩn đoán nếu bước sau lỗi)
-        run: cat scaffold/android/app/build.gradle.kts
-
-      - name: Nâng minSdk lên 28 (yêu cầu bởi lib_llama_cpp)
+      - name: Nâng minSdk lên 28 (yêu cầu bởi thư viện AI local)
         run: |
           find scaffold/android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -print0 | xargs -0 sed -i -E \
             -e 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 28/' \
             -e 's/minSdkVersion = flutter\.minSdkVersion/minSdkVersion = 28/' \
             -e 's/minSdk = flutter\.minSdkVersion/minSdk = 28/' \
             -e 's/minSdk flutter\.minSdkVersion/minSdk 28/'
-
-      - name: Kiểm tra minSdk đã đổi chưa
-        run: grep -i "minsdk" scaffold/android/app/build.gradle.kts
 
       - name: Ghép code Dart đã viết vào khung vừa sinh
         run: |
@@ -39,8 +33,10 @@ jobs:
       - name: Đổi tên app hiển thị thành LocalNovel
         run: sed -i 's/android:label="[^"]*"/android:label="LocalNovel"/' scaffold/android/app/src/main/AndroidManifest.xml
 
-      - name: Thêm quyền Internet cho Android
-        run: sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
+      - name: Thêm quyền Internet và truy cập file cho Android
+        run: |
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<manifest #<manifest xmlns:tools="http://schemas.android.com/tools" #' scaffold/android/app/src/main/AndroidManifest.xml
 
       - name: Cài thư viện
         working-directory: scaffold

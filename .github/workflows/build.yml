@@ -16,6 +16,20 @@ jobs:
       - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
         run: flutter create --org com.localnovel --project-name local_novel scaffold
 
+      - name: Xem cú pháp thật của file Gradle (để chẩn đoán nếu bước sau lỗi)
+        run: cat scaffold/android/app/build.gradle.kts
+
+      - name: Nâng minSdk lên 28 (yêu cầu bởi lib_llama_cpp)
+        run: |
+          find scaffold/android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -print0 | xargs -0 sed -i -E \
+            -e 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 28/' \
+            -e 's/minSdkVersion = flutter\.minSdkVersion/minSdkVersion = 28/' \
+            -e 's/minSdk = flutter\.minSdkVersion/minSdk = 28/' \
+            -e 's/minSdk flutter\.minSdkVersion/minSdk 28/'
+
+      - name: Kiểm tra minSdk đã đổi chưa
+        run: grep -i "minsdk" scaffold/android/app/build.gradle.kts
+
       - name: Ghép code Dart đã viết vào khung vừa sinh
         run: |
           rm -rf scaffold/lib

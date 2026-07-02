@@ -11,16 +11,19 @@ jobs:
           channel: stable
 
       - name: Giải nén code đã upload
-        run: unzip truong_thien_flutter.zip -d extracted
+        run: unzip local_novel.zip -d extracted
 
       - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
-        run: flutter create --org com.truongthien --project-name truong_thien scaffold
+        run: flutter create --org com.localnovel --project-name local_novel scaffold
 
       - name: Ghép code Dart đã viết vào khung vừa sinh
         run: |
           rm -rf scaffold/lib
-          cp -r extracted/truong_thien/lib scaffold/lib
-          cp extracted/truong_thien/pubspec.yaml scaffold/pubspec.yaml
+          cp -r extracted/local_novel/lib scaffold/lib
+          cp extracted/local_novel/pubspec.yaml scaffold/pubspec.yaml
+
+      - name: Đổi tên app hiển thị thành LocalNovel
+        run: sed -i 's/android:label="[^"]*"/android:label="LocalNovel"/' scaffold/android/app/src/main/AndroidManifest.xml
 
       - name: Thêm quyền Internet cho Android
         run: sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
@@ -44,5 +47,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: truong-thien-apk
+          name: LocalNovel-apk
           path: scaffold/build/app/outputs/flutter-apk/app-release.apk

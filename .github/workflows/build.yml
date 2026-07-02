@@ -42,6 +42,9 @@ jobs:
         working-directory: scaffold
         run: flutter pub get
 
+      - name: Cài đúng bản CMake 3.18.1 (yêu cầu bởi flutter_llama)
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.18.1"
+
       - name: Tăng bộ nhớ ảo để tránh hết RAM khi build
         run: |
           sudo swapoff -a

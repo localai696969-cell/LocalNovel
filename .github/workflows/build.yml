@@ -4,62 +4,78 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+    - uses: subosito/flutter-action@v2
+      with:
+        channel: stable
 
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+    - name: Giải nén code đã upload
+      run: unzip local_novel.zip -d extracted
 
-      - name: Giải nén code đã upload
-        run: unzip local_novel.zip -d extracted
+    - name: Sinh khung project Flutter đầy đủ
+      run: flutter create --org com.localnovel --project-name local_novel scaffold
 
-      - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
-        run: flutter create --org com.localnovel --project-name local_novel scaffold
+    - name: Cấu hình Android an toàn (minSdk 28, compileSdk 36)
+      run: |
+        cat > scaffold/android/app/build.gradle.kts << 'EOF'
+        plugins {
+            id("com.android.application")
+            id("kotlin-android")
+            id("dev.flutter.flutter-gradle-plugin")
+        }
+        android {
+            namespace = "com.localnovel"
+            compileSdk = 36
+            ndkVersion = "27.0.12077973"
+            defaultConfig {
+                applicationId = "com.localnovel"
+                minSdk = 28
+                targetSdk = 36
+                versionCode = 1
+                versionName = "1.0"
+            }
+            buildTypes {
+                release {
+                    signingConfig = signingConfigs.getByName("debug")
+                    minifyEnabled = false
+                }
+            }
+        }
+        flutter {
+            source = "../.."
+        }
+        EOF
 
-      - name: Xem cú pháp thật của file Gradle (để chẩn đoán nếu bước sau lỗi)
-        run: cat scaffold/android/app/build.gradle.kts
+    - name: Ghép code Dart đã viết vào khung vừa sinh
+      run: |
+        rm -rf scaffold/lib
+        cp -r extracted/local_novel/lib scaffold/lib
+        cp extracted/local_novel/pubspec.yaml scaffold/pubspec.yaml
 
-      - name: Nâng minSdk lên 28 (yêu cầu bởi lib_llama_cpp)
-        run: |
-          find scaffold/android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -print0 | xargs -0 sed -i -E \
-            -e 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 28/' \
-            -e 's/minSdkVersion = flutter\.minSdkVersion/minSdkVersion = 28/' \
-            -e 's/minSdk = flutter\.minSdkVersion/minSdk = 28/' \
-            -e 's/minSdk flutter\.minSdkVersion/minSdk 28/'
+    - name: Đổi tên app hiển thị thành LocalNovel
+      run: sed -i 's/android:label="[^"]*"/android:label="LocalNovel"/' scaffold/android/app/src/main/AndroidManifest.xml
 
-      - name: Kiểm tra minSdk đã đổi chưa
-        run: grep -i "minsdk" scaffold/android/app/build.gradle.kts
+    - name: Thêm quyền Internet cho Android
+      run: sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
 
-      - name: Ghép code Dart đã viết vào khung vừa sinh
-        run: |
-          rm -rf scaffold/lib
-          cp -r extracted/local_novel/lib scaffold/lib
-          cp extracted/local_novel/pubspec.yaml scaffold/pubspec.yaml
+    - name: Cài thư viện
+      working-directory: scaffold
+      run: flutter pub get
 
-      - name: Đổi tên app hiển thị thành LocalNovel
-        run: sed -i 's/android:label="[^"]*"/android:label="LocalNovel"/' scaffold/android/app/src/main/AndroidManifest.xml
+    - name: Tăng bộ nhớ ảo để tránh hết RAM khi build
+      run: |
+        sudo swapoff -a
+        sudo fallocate -l 12G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        free -h
 
-      - name: Thêm quyền Internet cho Android
-        run: sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
+    - name: Build APK
+      working-directory: scaffold
+      run: flutter build apk --release
 
-      - name: Cài thư viện
-        working-directory: scaffold
-        run: flutter pub get
-
-      - name: Tăng bộ nhớ ảo để tránh hết RAM khi build
-        run: |
-          sudo swapoff -a
-          sudo fallocate -l 12G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
-
-      - name: Build APK
-        working-directory: scaffold
-        run: flutter build apk --release
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: LocalNovel-apk
-          path: scaffold/build/app/outputs/flutter-apk/app-release.apk
+    - uses: actions/upload-artifact@v4
+      with:
+        name: LocalNovel-apk
+        path: scaffold/build/app/outputs/flutter-apk/app-release.apk

@@ -16,6 +16,9 @@ jobs:
       - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
         run: flutter create --org com.truongthien --project-name truong_thien scaffold
 
+      - name: Nâng compileSdk lên 36 (yêu cầu bởi file_picker)
+        run: find scaffold/android -name "build.gradle*" -exec sed -i 's/flutter.compileSdkVersion/36/g' {} \;
+
       - name: Ghép code Dart đã viết vào khung vừa sinh
         run: |
           rm -rf scaffold/lib

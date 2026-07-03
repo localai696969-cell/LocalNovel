@@ -16,14 +16,6 @@ jobs:
       - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
         run: flutter create --org com.localnovel --project-name local_novel scaffold
 
-      - name: Nâng minSdk lên 28 (yêu cầu bởi thư viện AI local)
-        run: |
-          find scaffold/android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -print0 | xargs -0 sed -i -E \
-            -e 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 28/' \
-            -e 's/minSdkVersion = flutter\.minSdkVersion/minSdkVersion = 28/' \
-            -e 's/minSdk = flutter\.minSdkVersion/minSdk = 28/' \
-            -e 's/minSdk flutter\.minSdkVersion/minSdk 28/'
-
       - name: Ghép code Dart đã viết vào khung vừa sinh
         run: |
           rm -rf scaffold/lib
@@ -33,17 +25,14 @@ jobs:
       - name: Đổi tên app hiển thị thành LocalNovel
         run: sed -i 's/android:label="[^"]*"/android:label="LocalNovel"/' scaffold/android/app/src/main/AndroidManifest.xml
 
-      - name: Thêm quyền Internet và truy cập file cho Android
+      - name: Thêm quyền, largeHeap cho Android
         run: |
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage"/><application android:largeHeap="true"#' scaffold/android/app/src/main/AndroidManifest.xml
           sed -i 's#<manifest #<manifest xmlns:tools="http://schemas.android.com/tools" #' scaffold/android/app/src/main/AndroidManifest.xml
 
       - name: Cài thư viện
         working-directory: scaffold
         run: flutter pub get
-
-      - name: Cài đúng bản CMake 3.18.1 (yêu cầu bởi flutter_llama)
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.18.1"
 
       - name: Tăng bộ nhớ ảo để tránh hết RAM khi build
         run: |

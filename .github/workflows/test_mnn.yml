@@ -14,10 +14,13 @@ jobs:
       - name: Clone kho mã nguồn chính thức của Alibaba (không phải fork/sửa)
         run: git clone --depth 1 https://github.com/alibaba/MNN.git
 
-      - name: Cài đúng NDK 21 (khuyến nghị chính thức trong README của MNN)
+      - name: Cài NDK mới nhất có sẵn (NDK 21 trong README của MNN đã lỗi thời — clang của nó không hỗ trợ tập lệnh SVE2 mà KleidiAI cần, gây lỗi "does not support -march=...+sve2")
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.4.7075529"
-          echo "ANDROID_NDK=$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_ENV
+          NEWEST_NDK=$(yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --list 2>/dev/null | grep -oE "ndk;[0-9.]+" | sort -t';' -k2 -V | tail -1)
+          echo "Dùng NDK: $NEWEST_NDK"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "$NEWEST_NDK"
+          NDK_VERSION=$(echo "$NEWEST_NDK" | cut -d';' -f2)
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
 
       - name: Tăng bộ nhớ ảo để tránh hết RAM khi build C++ nặng
         run: |

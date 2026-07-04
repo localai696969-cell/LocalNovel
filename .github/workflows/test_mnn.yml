@@ -1,0 +1,56 @@
+name: Build MNN Chat (feasibility test)
+# MỤC ĐÍCH: build thử NGUYÊN BẢN app "MNN Chat" của Alibaba (chưa sửa gì)
+# để xác nhận: (1) build có chạy được trên GitHub Actions không,
+# (2) APK ra có cài/chạy được trên Zenfone 8 không, (3) tốc độ CPU/GPU/QNN
+# thật trên máy bạn ra sao — TRƯỚC KHI bỏ công tích hợp vào LocalNovel.
+# Nếu bước này thất bại hoặc quá nặng cho máy ảo miễn phí của GitHub,
+# ta biết ngay mà không mất công sửa app chính trước.
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone kho mã nguồn chính thức của Alibaba (không phải fork/sửa)
+        run: git clone --depth 1 https://github.com/alibaba/MNN.git
+
+      - name: Cài đúng NDK 21 (khuyến nghị chính thức trong README của MNN)
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.4.7075529"
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_ENV
+
+      - name: Tăng bộ nhớ ảo để tránh hết RAM khi build C++ nặng
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      # Đây là đúng nguyên văn lệnh build thư viện native trong README
+      # chính thức của MNN — không đoán cờ CMake, dùng lại y hệt.
+      - name: Build thư viện MNN native (bật LLM + OpenCL cho GPU)
+        working-directory: MNN/project/android
+        run: |
+          mkdir build_64
+          cd build_64
+          ../build_64.sh "-DMNN_LOW_MEMORY=true -DMNN_CPU_WEIGHT_DEQUANT_GEMM=true -DMNN_BUILD_LLM=true -DMNN_SUPPORT_TRANSFORMER_FUSE=true -DMNN_ARM82=true -DMNN_USE_LOGCAT=true -DMNN_OPENCL=true -DMNN_SEP_BUILD=OFF -DCMAKE_INSTALL_PREFIX=."
+          make install
+
+      - name: Xem cấu trúc thư mục app MnnLlmChat (để đối chiếu nếu bước sau lỗi)
+        run: find MNN/apps/Android/MnnLlmChat -maxdepth 2
+
+      - name: Build APK release (thay vì installDebug.sh vì CI không có thiết bị cắm vào)
+        working-directory: MNN/apps/Android/MnnLlmChat
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Tìm file APK vừa build ra (đường dẫn thật có thể khác, in ra để xác nhận)
+        run: find MNN/apps/Android/MnnLlmChat -name "*.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MnnLlmChat-original-apk
+          path: MNN/apps/Android/MnnLlmChat/**/*.apk

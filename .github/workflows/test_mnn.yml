@@ -44,11 +44,17 @@ jobs:
       - name: Xem cấu trúc thư mục app MnnLlmChat (để đối chiếu nếu bước sau lỗi)
         run: find MNN/apps/Android/MnnLlmChat -maxdepth 2
 
-      - name: Build APK release (thay vì installDebug.sh vì CI không có thiết bị cắm vào)
+      # Dùng bản debug thay vì release: mã nguồn công khai của MNN không
+      # kèm khóa ký (signing key) riêng của Alibaba, nên bản release build
+      # ra sẽ KHÔNG CÓ CHỮ KÝ (app-release-unsigned.apk) — Android luôn từ
+      # chối cài loại này, báo đúng lỗi "gói có vẻ không hợp lệ". Bản debug
+      # được Gradle tự động ký bằng khóa debug mặc định, luôn cài được —
+      # đủ dùng cho mục đích test tốc độ/khả thi ở bước này.
+      - name: Build APK debug (release build sẽ không có chữ ký, không cài được)
         working-directory: MNN/apps/Android/MnnLlmChat
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
+          ./gradlew assembleDebug --stacktrace
 
       - name: Tìm file APK vừa build ra (đường dẫn thật có thể khác, in ra để xác nhận)
         run: find MNN/apps/Android/MnnLlmChat -name "*.apk"
@@ -56,4 +62,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: MnnLlmChat-original-apk
-          path: MNN/apps/Android/MnnLlmChat/**/*.apk
+          path: MNN/apps/Android/MnnLlmChat/**/*-debug.apk

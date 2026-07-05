@@ -64,6 +64,24 @@ jobs:
       - name: Clone mã nguồn chính thức MNN (Alibaba)
         run: git clone --depth 1 https://github.com/alibaba/MNN.git
 
+      # QNN backend của MNN cần header + thư viện thật của Qualcomm
+      # (QnnInterface.h...) — đây là SDK độc quyền, MNN không mang theo
+      # sẵn. Bản "Community" tải công khai được, không cần đăng nhập tài
+      # khoản Qualcomm — đúng theo hướng dẫn chính thức của MNN
+      # (mnn-docs.readthedocs.io/en/latest/inference/npu.html).
+      - name: Tải QNN SDK (Qualcomm) và đặt đúng chỗ MNN yêu cầu
+        run: |
+          wget -q https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/2.40.0.251030/v2.40.0.251030.zip -O qnn_sdk.zip
+          unzip -q qnn_sdk.zip -d qnn_sdk
+          QNN_SDK_ROOT=$(find qnn_sdk -maxdepth 2 -name "QNN_README.txt" -exec dirname {} \; | head -1)
+          echo "QNN_SDK_ROOT=$QNN_SDK_ROOT"
+          echo "QNN_SDK_ROOT=$QNN_SDK_ROOT" >> $GITHUB_ENV
+          mkdir -p MNN/source/backend/qnn/3rdParty
+          cp -r "$QNN_SDK_ROOT/include/QNN" MNN/source/backend/qnn/3rdParty/include
+          cp -r "$QNN_SDK_ROOT/lib" MNN/source/backend/qnn/3rdParty/lib
+          echo "=== Xác nhận QnnInterface.h đã có đúng chỗ ==="
+          find MNN/source/backend/qnn/3rdParty -name "QnnInterface.h"
+
       - name: Build engine MNN native (bật LLM + OpenCL GPU + QNN NPU)
         working-directory: MNN/project/android
         run: |
@@ -106,6 +124,18 @@ jobs:
           mkdir -p scaffold/android/app/src/main/jniLibs/arm64-v8a
           find build_bridge -name "libmnn_bridge.so" -exec cp {} scaffold/android/app/src/main/jniLibs/arm64-v8a/ \;
           find MNN/project/android/build_64 -name "*.so" -exec cp {} scaffold/android/app/src/main/jniLibs/arm64-v8a/ \;
+          # 4 thư viện QNN runtime thật (không tự build được, lấy từ SDK đã tải) —
+          # HEXAGON_ARCH=68 suy ra từ Hexagon 780 trên Snapdragon 888 (Zenfone 8),
+          # theo hướng dẫn chính thức MNN. NẾU CHIP KHÁC hoặc suy luận này sai,
+          # log bước sau (kiểm tra file tồn tại) sẽ báo rõ không tìm thấy file.
+          HEXAGON_ARCH=68
+          QNN_LIB_DIR="MNN/source/backend/qnn/3rdParty/lib"
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtp.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtp.so — xem log tải QNN SDK ở bước trước"
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpPrepare.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpPrepare.so"
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpV${HEXAGON_ARCH}Stub.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpV${HEXAGON_ARCH}Stub.so — có thể sai HEXAGON_ARCH, xem danh sách file thật ở dòng dưới"
+          cp "$QNN_LIB_DIR/hexagon-v${HEXAGON_ARCH}/unsigned/libQnnHtpV${HEXAGON_ARCH}Skel.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpV${HEXAGON_ARCH}Skel.so — có thể sai HEXAGON_ARCH"
+          echo "=== Toàn bộ thư mục lib thật trong QNN SDK (đối chiếu nếu HEXAGON_ARCH ở trên sai) ==="
+          find "$QNN_LIB_DIR" -maxdepth 2 -type d
           echo "=== Danh sách .so đã đặt vào jniLibs ==="
           ls -la scaffold/android/app/src/main/jniLibs/arm64-v8a/
 

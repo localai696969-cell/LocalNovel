@@ -153,9 +153,7 @@ jobs:
           echo "=== Nội dung build.gradle app thật, trước khi sửa (để đối chiếu nếu sed dưới không khớp) ==="
           cat scaffold/android/app/build.gradle* 2>/dev/null
           find scaffold/android/app -name "build.gradle*" -exec sed -i \
-            -e '/dependencies {/a\
-    implementation("com.qualcomm.qti:qnn-runtime:2.42.0")\
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")' {} \;
+            -e '/dependencies {/a\implementation("com.qualcomm.qti:qnn-runtime:2.42.0")\implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")' {} \;
 
       - name: Kiểm tra build.gradle đã thêm dependency thành công chưa
         run: cat scaffold/android/app/build.gradle*

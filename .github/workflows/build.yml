@@ -78,8 +78,8 @@ jobs:
           unzip -q qnn_sdk.zip -d qnn_sdk
           echo "=== Cây thư mục sau khi giải nén (để xác nhận đúng cấu trúc thật, không đoán maxdepth) ==="
           find qnn_sdk -maxdepth 3
-          QNN_SDK_ROOT=$(find qnn_sdk -name "QNN_README.txt" -exec dirname {} \; | head -1)
-          echo "QNN_SDK_ROOT=$QNN_SDK_ROOT"
+          QNN_SDK_ROOT="$(cd "$(dirname "$(find qnn_sdk -name QNN_README.txt | head -1)")" && pwd)"
+          echo "QNN_SDK_ROOT (tuyệt đối)=$QNN_SDK_ROOT"
           if [ -z "$QNN_SDK_ROOT" ]; then
             echo "KHÔNG tìm thấy QNN_README.txt — xem cây thư mục ở trên để biết cấu trúc thật, dừng lại ở đây thay vì lỗi mơ hồ tiếp"
             exit 1

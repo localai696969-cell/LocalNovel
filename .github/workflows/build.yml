@@ -10,11 +10,36 @@ jobs:
         with:
           channel: stable
 
-      - name: Giải nén code đã upload
+      - name: Cài NDK mới nhất có sẵn (bản cũ không hỗ trợ SVE2/KleidiAI)
+        run: |
+          NEWEST_NDK=$(yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --list 2>/dev/null | grep -oE "ndk;[0-9.]+" | sort -t';' -k2 -V | tail -1)
+          echo "Dùng NDK: $NEWEST_NDK"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "$NEWEST_NDK"
+          NDK_VERSION=$(echo "$NEWEST_NDK" | cut -d';' -f2)
+          echo "ANDROID_NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
+
+      - name: Tăng bộ nhớ ảo để tránh hết RAM khi build C++ nặng
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 12G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+
+      - name: Giải nén code Flutter đã upload
         run: unzip local_novel.zip -d extracted
 
       - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
         run: flutter create --org com.localnovel --project-name local_novel scaffold
+
+      - name: Nâng minSdk lên 28 (yêu cầu bởi engine AI local)
+        run: |
+          find scaffold/android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i \
+            -e 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 28/' \
+            -e 's/minSdkVersion = flutter\.minSdkVersion/minSdkVersion = 28/' \
+            -e 's/minSdk = flutter\.minSdkVersion/minSdk = 28/' \
+            -e 's/minSdk flutter\.minSdkVersion/minSdk 28/' {} \;
 
       - name: Ghép code Dart đã viết vào khung vừa sinh
         run: |
@@ -25,23 +50,76 @@ jobs:
       - name: Đổi tên app hiển thị thành LocalNovel
         run: sed -i 's/android:label="[^"]*"/android:label="LocalNovel"/' scaffold/android/app/src/main/AndroidManifest.xml
 
-      - name: Thêm quyền, largeHeap cho Android
+      - name: Thêm quyền Internet và truy cập file cho Android
         run: |
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage"/><application android:largeHeap="true"#' scaffold/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
           sed -i 's#<manifest #<manifest xmlns:tools="http://schemas.android.com/tools" #' scaffold/android/app/src/main/AndroidManifest.xml
 
-      - name: Cài thư viện
+      - name: Cài thư viện Dart
         working-directory: scaffold
         run: flutter pub get
 
-      - name: Tăng bộ nhớ ảo để tránh hết RAM khi build
+      # ================== TỪ ĐÂY LÀ PHẦN MỚI: BUILD ENGINE MNN + QNN ==================
+
+      - name: Clone mã nguồn chính thức MNN (Alibaba)
+        run: git clone --depth 1 https://github.com/alibaba/MNN.git
+
+      - name: Build engine MNN native (bật LLM + OpenCL GPU + QNN NPU)
+        working-directory: MNN/project/android
         run: |
-          sudo swapoff -a
-          sudo fallocate -l 12G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          free -h
+          mkdir build_64
+          cd build_64
+          ../build_64.sh "-DMNN_LOW_MEMORY=true -DMNN_CPU_WEIGHT_DEQUANT_GEMM=true -DMNN_BUILD_LLM=true -DMNN_SUPPORT_TRANSFORMER_FUSE=true -DMNN_ARM82=true -DMNN_USE_LOGCAT=true -DMNN_OPENCL=true -DMNN_QNN=true -DMNN_SEP_BUILD=OFF -DCMAKE_INSTALL_PREFIX=."
+          make install
+
+      - name: In cấu trúc thư mục install thật (để xác nhận đúng đường dẫn .so/header trước khi build cầu nối)
+        run: |
+          echo "=== Toàn bộ cây thư mục install ==="
+          find MNN/project/android/build_64 -maxdepth 4 -type d
+          echo "=== Toàn bộ file .so tạo ra ==="
+          find MNN/project/android/build_64 -name "*.so"
+          echo "=== Toàn bộ header llm.hpp (nếu có) — đối chiếu tên hàm thật trước khi build cầu nối ==="
+          find MNN -path "*llm/engine/include*" -name "*.hpp" -exec echo "--- {} ---" \; -exec cat {} \;
+
+      - name: Ghép code native (Kotlin + JNI) vào project Android
+        run: |
+          mkdir -p scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge
+          cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/MainActivity.kt \
+             scaffold/android/app/src/main/kotlin/com/localnovel/MainActivity.kt
+          cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/mnnbridge/*.kt \
+             scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge/
+          mkdir -p scaffold/android/app/src/main/cpp
+          cp extracted/local_novel/android_native/app/src/main/cpp/mnn_bridge.cpp scaffold/android/app/src/main/cpp/
+          cp extracted/local_novel/android_native/app/src/main/cpp/CMakeLists.txt scaffold/android/app/src/main/cpp/
+
+      - name: Biên dịch cầu nối JNI (mnn_bridge.cpp), liên kết với engine MNN vừa build
+        run: |
+          MNN_INSTALL_DIR="$(pwd)/MNN/project/android/build_64"
+          cmake -B build_bridge -S scaffold/android/app/src/main/cpp \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+            -DMNN_INSTALL_DIR="$MNN_INSTALL_DIR"
+          cmake --build build_bridge --config Release
+
+      - name: Đặt file .so vào đúng chỗ Android tự nhận (jniLibs) — không cần sửa Gradle
+        run: |
+          mkdir -p scaffold/android/app/src/main/jniLibs/arm64-v8a
+          find build_bridge -name "libmnn_bridge.so" -exec cp {} scaffold/android/app/src/main/jniLibs/arm64-v8a/ \;
+          find MNN/project/android/build_64 -name "*.so" -exec cp {} scaffold/android/app/src/main/jniLibs/arm64-v8a/ \;
+          echo "=== Danh sách .so đã đặt vào jniLibs ==="
+          ls -la scaffold/android/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Thêm dependency QNN runtime (Qualcomm, Maven Central) + Kotlin coroutines vào build.gradle
+        run: |
+          echo "=== Nội dung build.gradle app thật, trước khi sửa (để đối chiếu nếu sed dưới không khớp) ==="
+          cat scaffold/android/app/build.gradle* 2>/dev/null
+          find scaffold/android/app -name "build.gradle*" -exec sed -i \
+            -e '/dependencies {/a\implementation("com.qualcomm.qti:qnn-runtime:2.42.0")\implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")' {} \;
+
+      - name: Kiểm tra build.gradle đã thêm dependency thành công chưa
+        run: cat scaffold/android/app/build.gradle*
+
+      # ================== HẾT PHẦN MỚI ==================
 
       - name: Build APK
         working-directory: scaffold

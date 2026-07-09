@@ -30,8 +30,16 @@ jobs:
       - name: Giải nén code Flutter đã upload
         run: unzip local_novel.zip -d extracted
 
-      - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
-        run: flutter create --org com.localnovel --project-name local_novel scaffold
+      - name: Ghép code native (Kotlin + JNI) vào project Android
+        run: |
+          mkdir -p scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge
+          cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/MainActivity.kt \
+             scaffold/android/app/src/main/kotlin/com/localnovel/MainActivity.kt
+          cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/mnnbridge/*.kt \
+             scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge/
+          mkdir -p scaffold/android/app/src/main/cpp
+          cp extracted/local_novel/android_native/app/src/main/cpp/mnn_bridge.cpp scaffold/android/app/src/main/cpp/
+          cp extracted/local_novel/android_native/app/src/main/cpp/CMakeLists.txt scaffold/android/app/src/main/cpp/
 
       - name: Nâng minSdk lên 28 (yêu cầu bởi engine AI local)
         run: |

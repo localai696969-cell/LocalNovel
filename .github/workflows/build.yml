@@ -30,16 +30,8 @@ jobs:
       - name: Giải nén code Flutter đã upload
         run: unzip local_novel.zip -d extracted
 
-      - name: Ghép code native (Kotlin + JNI) vào project Android
-        run: |
-          mkdir -p scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge
-          cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/MainActivity.kt \
-             scaffold/android/app/src/main/kotlin/com/localnovel/MainActivity.kt
-          cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/mnnbridge/*.kt \
-             scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge/
-          mkdir -p scaffold/android/app/src/main/cpp
-          cp extracted/local_novel/android_native/app/src/main/cpp/mnn_bridge.cpp scaffold/android/app/src/main/cpp/
-          cp extracted/local_novel/android_native/app/src/main/cpp/CMakeLists.txt scaffold/android/app/src/main/cpp/
+      - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
+        run: flutter create --org com.localnovel --project-name local_novel scaffold
 
       - name: Nâng minSdk lên 28 (yêu cầu bởi engine AI local)
         run: |
@@ -118,14 +110,40 @@ jobs:
 
       - name: Ghép code native (Kotlin + JNI) vào project Android
         run: |
+          # Không đoán/hardcode đường dẫn package — dò ĐÚNG vị trí + package
+          # thật mà `flutter create --org com.localnovel --project-name local_novel`
+          # vừa sinh ra cho MainActivity mặc định. Lệnh create ở trên ghép
+          # org + tên project thành package thật là "com.localnovel.local_novel",
+          # KHÁC với "com.localnovel" mà bước này từng hardcode — đây chính là
+          # nguyên nhân MainActivity thật của chúng ta (có đăng ký MethodChannel)
+          # không bao giờ được Android chạy tới, gây MissingPluginException dù
+          # build/cài đặt vẫn "thành công" bình thường.
+          DEFAULT_MAIN_ACTIVITY="$(find scaffold/android/app/src/main -name 'MainActivity.kt' -o -name 'MainActivity.java' | head -1)"
+          echo "MainActivity mặc định do flutter create sinh ra tại: $DEFAULT_MAIN_ACTIVITY"
+          test -n "$DEFAULT_MAIN_ACTIVITY" || { echo "KHÔNG tìm thấy MainActivity mặc định — cấu trúc scaffold đã đổi khác, dừng lại thay vì đoán tiếp"; exit 1; }
+
+          REAL_PACKAGE="$(grep -oP '(?<=^package )[a-zA-Z0-9_.]+' "$DEFAULT_MAIN_ACTIVITY")"
+          echo "Package thật của app: $REAL_PACKAGE"
+          REAL_PACKAGE_PATH="$(echo "$REAL_PACKAGE" | tr '.' '/')"
+
+          rm -f "$DEFAULT_MAIN_ACTIVITY"
+          mkdir -p "scaffold/android/app/src/main/kotlin/$REAL_PACKAGE_PATH"
           mkdir -p scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge
+
           cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/MainActivity.kt \
-             scaffold/android/app/src/main/kotlin/com/localnovel/MainActivity.kt
+             "scaffold/android/app/src/main/kotlin/$REAL_PACKAGE_PATH/MainActivity.kt"
+          sed -i "1s/^package .*/package $REAL_PACKAGE/" \
+             "scaffold/android/app/src/main/kotlin/$REAL_PACKAGE_PATH/MainActivity.kt"
+
           cp extracted/local_novel/android_native/app/src/main/kotlin/com/localnovel/mnnbridge/*.kt \
              scaffold/android/app/src/main/kotlin/com/localnovel/mnnbridge/
+
           mkdir -p scaffold/android/app/src/main/cpp
           cp extracted/local_novel/android_native/app/src/main/cpp/mnn_bridge.cpp scaffold/android/app/src/main/cpp/
           cp extracted/local_novel/android_native/app/src/main/cpp/CMakeLists.txt scaffold/android/app/src/main/cpp/
+
+          echo "=== Xác nhận nội dung MainActivity.kt cuối cùng (phải thấy dòng đăng ký MethodChannel) ==="
+          cat "scaffold/android/app/src/main/kotlin/$REAL_PACKAGE_PATH/MainActivity.kt"
 
       - name: Biên dịch cầu nối JNI (mnn_bridge.cpp), liên kết với engine MNN vừa build
         run: |
@@ -141,10 +159,6 @@ jobs:
           mkdir -p scaffold/android/app/src/main/jniLibs/arm64-v8a
           find build_bridge -name "libmnn_bridge.so" -exec cp {} scaffold/android/app/src/main/jniLibs/arm64-v8a/ \;
           find MNN/project/android/build_64 -name "*.so" -exec cp {} scaffold/android/app/src/main/jniLibs/arm64-v8a/ \;
-          # 4 thư viện QNN runtime thật (không tự build được, lấy từ SDK đã tải) —
-          # HEXAGON_ARCH=68 suy ra từ Hexagon 780 trên Snapdragon 888 (Zenfone 8),
-          # theo hướng dẫn chính thức MNN. NẾU CHIP KHÁC hoặc suy luận này sai,
-          # log bước sau (kiểm tra file tồn tại) sẽ báo rõ không tìm thấy file.
           HEXAGON_ARCH=68
           QNN_LIB_DIR="MNN/source/backend/qnn/3rdParty/lib"
           cp "$QNN_LIB_DIR/aarch64-android/libQnnHtp.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtp.so — xem log tải QNN SDK ở bước trước"

@@ -182,6 +182,31 @@ jobs:
 
       # ================== HẾT PHẦN MỚI ==================
 
+      # QUAN TRỌNG: tắt hẳn R8/ProGuard (code shrinking/rút gọn code) cho
+      # bản release — đã xác nhận qua log debug thật trên máy: JNI
+      # GetMethodID("onToken", ...) trả về NULL ở bản release (dù code
+      # Kotlin hoàn toàn đúng), rất giống dấu hiệu bị R8 đổi tên hàm mà
+      # không có luật "-keep" bảo vệ interface TokenCallback dùng qua JNI
+      # (JNI tra cứu hàm bằng CHUỖI TÊN lúc chạy — R8 không biết điều này
+      # nên tự ý đổi tên như với code Kotlin thường). Tắt hẳn thay vì chỉ
+      # thêm luật "-keep" — đơn giản, chắc chắn loại trừ hoàn toàn khả năng
+      # này, đánh đổi chấp nhận được (app không cần tối ưu kích thước tới
+      # mức đó).
+      - name: Tắt R8/ProGuard code shrinking (tránh đổi tên hàm JNI cần tới bằng tên chuỗi)
+        run: |
+          for f in $(find scaffold/android/app -name "build.gradle" -o -name "build.gradle.kts"); do
+            echo "=== $f TRƯỚC khi sửa (đoạn buildTypes/release) ==="
+            grep -A 5 "release" "$f" || true
+            sed -i \
+              -e 's/minifyEnabled true/minifyEnabled false/' \
+              -e 's/isMinifyEnabled = true/isMinifyEnabled = false/' \
+              -e 's/shrinkResources true/shrinkResources false/' \
+              -e 's/isShrinkResources = true/isShrinkResources = false/' \
+              "$f"
+            echo "=== $f SAU khi sửa ==="
+            grep -A 5 "release" "$f" || true
+          done
+
       - name: Build APK
         working-directory: scaffold
         run: flutter build apk --release

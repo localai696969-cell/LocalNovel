@@ -182,30 +182,44 @@ jobs:
 
       # ================== HẾT PHẦN MỚI ==================
 
-      # QUAN TRỌNG: tắt hẳn R8/ProGuard (code shrinking/rút gọn code) cho
-      # bản release — đã xác nhận qua log debug thật trên máy: JNI
-      # GetMethodID("onToken", ...) trả về NULL ở bản release (dù code
-      # Kotlin hoàn toàn đúng), rất giống dấu hiệu bị R8 đổi tên hàm mà
-      # không có luật "-keep" bảo vệ interface TokenCallback dùng qua JNI
-      # (JNI tra cứu hàm bằng CHUỖI TÊN lúc chạy — R8 không biết điều này
-      # nên tự ý đổi tên như với code Kotlin thường). Tắt hẳn thay vì chỉ
-      # thêm luật "-keep" — đơn giản, chắc chắn loại trừ hoàn toàn khả năng
-      # này, đánh đổi chấp nhận được (app không cần tối ưu kích thước tới
-      # mức đó).
-      - name: Tắt R8/ProGuard code shrinking (tránh đổi tên hàm JNI cần tới bằng tên chuỗi)
+      # QUAN TRỌNG: đã xác nhận qua log debug thật trên máy — JNI
+      # GetMethodID("onToken", ...) trả về NULL ở bản release, tên lớp
+      # thật lúc chạy bị đổi thành "a0.a" (dấu hiệu R8/ProGuard đổi tên
+      # kinh điển). Theo tài liệu chính thức Flutter, các bản gần đây
+      # KHÔNG tắt được code shrinking cho bản release nữa (--no-shrink hết
+      # tác dụng) — nên KHÔNG cố tắt R8 nữa, mà thêm đúng luật "-keep" bảo
+      # vệ interface TokenCallback (và cả package com.localnovel nói
+      # chung, phòng hờ chỗ khác) khỏi bị đổi tên — cách chính thức được
+      # khuyến nghị để dùng JNI cùng R8.
+      - name: Thêm luật ProGuard "-keep" bảo vệ code gọi qua JNI khỏi bị R8 đổi tên
         run: |
-          for f in $(find scaffold/android/app -name "build.gradle" -o -name "build.gradle.kts"); do
-            echo "=== $f TRƯỚC khi sửa (đoạn buildTypes/release) ==="
-            grep -A 5 "release" "$f" || true
-            sed -i \
-              -e 's/minifyEnabled true/minifyEnabled false/' \
-              -e 's/isMinifyEnabled = true/isMinifyEnabled = false/' \
-              -e 's/shrinkResources true/shrinkResources false/' \
-              -e 's/isShrinkResources = true/isShrinkResources = false/' \
-              "$f"
-            echo "=== $f SAU khi sửa ==="
-            grep -A 5 "release" "$f" || true
-          done
+          python3 -c "
+          rules = '\n# --- LocalNovel: giu nguyen ten cac lop/ham goi qua JNI ---\n-keep class com.localnovel.** { *; }\n-keepclassmembers class com.localnovel.** { *; }\n-keep interface com.localnovel.** { *; }\n'
+          with open('scaffold/android/app/proguard-rules.pro', 'a') as f:
+              f.write(rules)
+          print('=== Noi dung proguard-rules.pro SAU khi them luat ===')
+          print(open('scaffold/android/app/proguard-rules.pro').read())
+          "
+          python3 -c "
+          import re, glob
+          candidates = glob.glob('scaffold/android/app/build.gradle') + glob.glob('scaffold/android/app/build.gradle.kts')
+          assert candidates, 'Khong tim thay build.gradle'
+          path = candidates[0]
+          content = open(path).read()
+          if 'proguardFiles' in content:
+              print(path + ' da co proguardFiles tu truoc, khong can them.')
+          else:
+              is_kts = path.endswith('.kts')
+              line = '            proguardFiles(getDefaultProguardFile(\"proguard-android-optimize.txt\"), \"proguard-rules.pro\")\n' if is_kts else '            proguardFiles getDefaultProguardFile(\'proguard-android-optimize.txt\'), \'proguard-rules.pro\'\n'
+              match = re.search(r'release\s*\{', content)
+              assert match, 'Khong tim thay khoi release { trong ' + path
+              insert_at = match.end()
+              content = content[:insert_at] + '\n' + line + content[insert_at:]
+              open(path, 'w').write(content)
+              print('Da them dong proguardFiles vao ' + path)
+          print('=== Noi dung ' + path + ' SAU khi kiem tra/sua ===')
+          print(open(path).read())
+          "
 
       - name: Build APK
         working-directory: scaffold

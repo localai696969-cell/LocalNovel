@@ -49,6 +49,64 @@ jobs:
       - name: Sinh khung project Flutter đầy đủ (android/, ios/...)
         run: flutter create --org com.localnovel --project-name local_novel scaffold
 
+      # ĐÃ THÊM (2026-07-27, lần 4 — dựa trên bằng chứng thật, không đoán):
+      # log build lần #46 cho thấy đúng nguyên nhân: file build.gradle THẬT
+      # của package `jni` (đọc trực tiếp từ pub-cache) có đoạn:
+      #   def agpMajor = ...ANDROID_GRADLE_PLUGIN_VERSION.tokenize('.')[0]
+      #   if (agpMajor < 9) { apply plugin: 'kotlin-android' }
+      #   ...
+      #   kotlin { compilerOptions { ... } }   // dòng gây lỗi
+      # Nghĩa là: `jni` CHỈ tự áp dụng plugin Kotlin khi AGP < 9. Scaffold
+      # Flutter hiện sinh ra AGP "9.0.1" (thấy trong settings.gradle.kts log
+      # thật) → điều kiện sai → plugin Kotlin không được áp dụng → khối
+      # `kotlin {...}` ở dòng 84 không tìm thấy extension tương ứng → lỗi.
+      # Tài liệu chính thức Android Developers cũng xác nhận AGP 9.0 đổi
+      # sang "built-in Kotlin", và plugin org.jetbrains.kotlin.android CŨ
+      # "không tương thích với DSL mới" của AGP 9 — nên không tự ép áp dụng
+      # lại plugin cũ vào project dùng AGP 9 (sẽ đụng đúng điều Google nói là
+      # không tương thích). Cách chắc ăn hơn: hạ AGP xuống dưới 9, đúng nhánh
+      # code mà `jni` đã viết/test.
+      #
+      # Version cụ thể dùng — có bằng chứng, không đoán:
+      # - AGP 8.13.0: tài liệu chính thức Android Developers ghi rõ
+      #   "AGP 8.13 now requires Gradle 8.13" — cặp version khớp nhau xác
+      #   nhận được, không phải suy đoán.
+      # - Gradle 8.13: đúng theo yêu cầu ở trên.
+      # - Kotlin 2.1.20: bản ổn định, thuộc dải "Kotlin 2.1.x + AGP 8.x" đã
+      #   được ghi nhận là tổ hợp chạy ổn định trước khi hệ sinh thái chuyển
+      #   sang AGP 9 (không có bằng chứng trực tiếp xác nhận đúng bản lẻ
+      #   2.1.20 với đúng Gradle 8.13 — đây là phần có rủi ro thấp còn sót
+      #   lại, sẽ biết ngay qua log nếu cần chỉnh thêm).
+      - name: Hạ AGP xuống dưới 9 + Gradle khớp version (khớp đúng điều kiện mà package jni yêu cầu)
+        run: |
+          python3 -c "
+          import glob
+          candidates = glob.glob('scaffold/android/settings.gradle.kts') + glob.glob('scaffold/android/settings.gradle')
+          assert candidates, 'Khong tim thay settings.gradle'
+          path = candidates[0]
+          print('=== Noi dung ' + path + ' TRUOC khi ha AGP/Kotlin ===')
+          content = open(path).read()
+          print(content)
+          content = content.replace('version \"9.0.1\"', 'version \"8.13.0\"').replace(\"version '9.0.1'\", \"version '8.13.0'\")
+          content = content.replace('version \"2.3.20\"', 'version \"2.1.20\"').replace(\"version '2.3.20'\", \"version '2.1.20'\")
+          open(path, 'w').write(content)
+          print('=== Noi dung ' + path + ' SAU khi ha AGP/Kotlin ===')
+          print(content)
+          "
+          python3 -c "
+          import re, glob
+          candidates = glob.glob('scaffold/android/gradle/wrapper/gradle-wrapper.properties')
+          assert candidates, 'Khong tim thay gradle-wrapper.properties'
+          path = candidates[0]
+          content = open(path).read()
+          print('=== Noi dung gradle-wrapper.properties TRUOC khi sua ===')
+          print(content)
+          new_content = re.sub(r'gradle-[0-9.]+-(bin|all)\.zip', 'gradle-8.13-bin.zip', content)
+          open(path, 'w').write(new_content)
+          print('=== Noi dung gradle-wrapper.properties SAU khi sua ===')
+          print(new_content)
+          "
+
       - name: Nâng minSdk lên 28 (yêu cầu bởi engine AI local)
         run: |
           find scaffold/android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i \

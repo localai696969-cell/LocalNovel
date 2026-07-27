@@ -106,14 +106,21 @@ jobs:
       # build trước — đây là lý do lỗi lặp lại y hệt dù đã "thêm bước vá".
       # Bỏ hẳn logic kiểm tra, làm trực tiếp + in rõ version TRƯỚC và SAU để
       # có bằng chứng thật (không đoán) cho lần đọc log tiếp theo:
+      # SỬA LẠI (2026-07-27, lần 3): log thật từ lần build trước cho thấy
+      # `flutter pub upgrade jni --major-versions` LUÔN thất bại với lý do
+      # rất cụ thể: lệnh này chỉ hợp lệ với dependency KHAI BÁO TRỰC TIẾP,
+      # trong khi jni trước đó chỉ là transitive — không phải lỗi cú pháp gì
+      # cả, mà là giới hạn thật của công cụ pub. Đã thêm `jni: any` trực tiếp
+      # vào pubspec.yaml (xem comment ở đó) để bước này giờ mới thực sự hợp
+      # lệ và chạy được.
       - name: Nâng jni lên bản mới nhất (vá lỗi kotlin() Gradle không tương thích)
         working-directory: scaffold
         run: |
-          echo "=== Version jni TRƯỚC khi nâng cấp (nếu có trong pubspec.lock) ==="
+          echo "=== Version jni TRƯỚC khi nâng cấp ==="
           grep -A2 '^  jni:' pubspec.lock 2>/dev/null || echo "(chưa có pubspec.lock hoặc jni không có trong đó)"
-          flutter pub upgrade jni --major-versions || echo "flutter pub upgrade jni thất bại hoặc jni không nằm trong cây dependency — xem log phía trên"
+          flutter pub upgrade jni --major-versions || echo "!!! flutter pub upgrade jni VẪN thất bại dù đã khai báo trực tiếp — xem kỹ log ngay phía trên dòng này, đây sẽ là bằng chứng quan trọng nhất nếu lỗi vẫn còn."
           echo "=== Version jni SAU khi nâng cấp (đọc thẳng từ pubspec.lock, không suy đoán) ==="
-          grep -A2 '^  jni:' pubspec.lock 2>/dev/null || echo "(vẫn không thấy jni trong pubspec.lock — có thể jni không phải transitive dependency thật, cần tìm nguồn gốc khác)"
+          grep -A2 '^  jni:' pubspec.lock 2>/dev/null || echo "(vẫn không thấy jni trong pubspec.lock — bất thường, cần xem log 'flutter pub upgrade' phía trên)"
 
       # ĐÃ THÊM (2026-07-27): lưu lại đúng pubspec.lock THẬT của lần build
       # này (dù thành công hay thất bại ở các bước sau) — để tải về, đưa vào
@@ -134,13 +141,21 @@ jobs:
       # nào — để sửa đúng chỗ ở lần tiếp theo, không phải đoán mò nữa.
       - name: In nội dung build.gradle thật của package jni (chẩn đoán, không sửa gì)
         run: |
-          JNI_GRADLE="$(find ~/.pub-cache/hosted/pub.dev -path '*/jni-*/android/build.gradle' 2>/dev/null | head -1)"
-          echo "Đường dẫn tìm thấy: $JNI_GRADLE"
-          if [ -n "$JNI_GRADLE" ]; then
-            echo "=== Nội dung đầy đủ build.gradle của jni ==="
+          # SỬA LẠI (2026-07-27, lần 3): pattern find trước đó quá lỏng,
+          # khớp NHẦM cả file trong "example/android/build.gradle" (project
+          # mẫu đóng gói kèm package, vô hại, không liên quan) — và vì dùng
+          # `head -1`, nó lấy đúng file sai đó. Giới hạn rõ: chỉ tìm
+          # "<tên gói>/android/build.gradle" ở ĐÚNG 1 cấp dưới thư mục gói,
+          # loại trừ hẳn mọi đường dẫn có "/example/".
+          JNI_DIR="$(find ~/.pub-cache/hosted/pub.dev -maxdepth 1 -name 'jni-*' -type d | sort -V | tail -1)"
+          echo "Thư mục package jni tìm thấy: $JNI_DIR"
+          JNI_GRADLE="$JNI_DIR/android/build.gradle"
+          if [ -f "$JNI_GRADLE" ]; then
+            echo "=== Nội dung đầy đủ build.gradle THẬT của jni (không phải example) ==="
             cat -n "$JNI_GRADLE"
           else
-            echo "Không tìm thấy build.gradle của jni trong pub-cache — có thể tên thư mục khác đi sau khi nâng cấp."
+            echo "Không thấy file tại $JNI_GRADLE — liệt kê toàn bộ cây thư mục để đối chiếu:"
+            find "$JNI_DIR" -maxdepth 3
           fi
           echo "=== Version Kotlin Gradle Plugin mà scaffold Flutter tự sinh ra (settings.gradle) ==="
           find scaffold/android -maxdepth 1 -name "settings.gradle*" -exec cat {} \;

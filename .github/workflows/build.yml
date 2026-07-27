@@ -98,18 +98,22 @@ jobs:
       # không cần hardcode số phiên bản (số đó sẽ đổi theo thời gian, hardcode
       # vào đây sẽ lại lỗi thời y như jni: 1.0.1 đang lỗi bây giờ).
       #
-      # CHỈ chạy nếu jni thực sự có mặt trong cây dependency (tránh lỗi nếu
-      # sau này nó không còn bị kéo vào nữa) — không làm gì nếu không tìm
-      # thấy, không làm gãy build vì 1 bước phòng ngừa không cần thiết.
+      # SỬA LẠI (2026-07-27, lần 2): bước trước dùng `grep -q "^jni "` để
+      # kiểm tra jni có trong cây dependency không trước khi nâng cấp — NHƯNG
+      # `flutter pub deps --style=list` in ra dạng "- jni 1.0.1" (có "- " ở
+      # đầu dòng), không phải "jni 1.0.1" như điều kiện giả định. Nghĩa là
+      # điều kiện đó gần như luôn sai, bước nâng cấp CHƯA TỪNG được gọi ở lần
+      # build trước — đây là lý do lỗi lặp lại y hệt dù đã "thêm bước vá".
+      # Bỏ hẳn logic kiểm tra, làm trực tiếp + in rõ version TRƯỚC và SAU để
+      # có bằng chứng thật (không đoán) cho lần đọc log tiếp theo:
       - name: Nâng jni lên bản mới nhất (vá lỗi kotlin() Gradle không tương thích)
         working-directory: scaffold
         run: |
-          if flutter pub deps --style=list 2>/dev/null | grep -q "^jni "; then
-            echo "Tìm thấy jni trong cây dependency — nâng lên bản mới nhất."
-            flutter pub upgrade jni --major-versions
-          else
-            echo "Không thấy jni trong cây dependency lần này — bỏ qua bước vá."
-          fi
+          echo "=== Version jni TRƯỚC khi nâng cấp (nếu có trong pubspec.lock) ==="
+          grep -A2 '^  jni:' pubspec.lock 2>/dev/null || echo "(chưa có pubspec.lock hoặc jni không có trong đó)"
+          flutter pub upgrade jni --major-versions || echo "flutter pub upgrade jni thất bại hoặc jni không nằm trong cây dependency — xem log phía trên"
+          echo "=== Version jni SAU khi nâng cấp (đọc thẳng từ pubspec.lock, không suy đoán) ==="
+          grep -A2 '^  jni:' pubspec.lock 2>/dev/null || echo "(vẫn không thấy jni trong pubspec.lock — có thể jni không phải transitive dependency thật, cần tìm nguồn gốc khác)"
 
       # ĐÃ THÊM (2026-07-27): lưu lại đúng pubspec.lock THẬT của lần build
       # này (dù thành công hay thất bại ở các bước sau) — để tải về, đưa vào
@@ -121,7 +125,25 @@ jobs:
           name: pubspec-lock
           path: scaffold/pubspec.lock
 
-      # ================== TỪ ĐÂY LÀ PHẦN CŨ: BUILD ENGINE MNN + QNN (không đổi) ==================
+      # ĐÃ THÊM (2026-07-27, lần 2): in thẳng nội dung THẬT của build.gradle
+      # bên trong package jni (đọc từ pub-cache, không phải suy đoán) — nếu
+      # bước nâng cấp ở trên vẫn không đủ (vd bản mới nhất của jni cũng có
+      # cùng vấn đề, hoặc lỗi thật ra nằm ở phiên bản Kotlin Gradle Plugin mà
+      # scaffold Flutter tự sinh ra chứ không phải ở bản thân jni), log này
+      # cho biết chính xác dòng nào đang gọi kotlin(...) và trong bối cảnh
+      # nào — để sửa đúng chỗ ở lần tiếp theo, không phải đoán mò nữa.
+      - name: In nội dung build.gradle thật của package jni (chẩn đoán, không sửa gì)
+        run: |
+          JNI_GRADLE="$(find ~/.pub-cache/hosted/pub.dev -path '*/jni-*/android/build.gradle' 2>/dev/null | head -1)"
+          echo "Đường dẫn tìm thấy: $JNI_GRADLE"
+          if [ -n "$JNI_GRADLE" ]; then
+            echo "=== Nội dung đầy đủ build.gradle của jni ==="
+            cat -n "$JNI_GRADLE"
+          else
+            echo "Không tìm thấy build.gradle của jni trong pub-cache — có thể tên thư mục khác đi sau khi nâng cấp."
+          fi
+          echo "=== Version Kotlin Gradle Plugin mà scaffold Flutter tự sinh ra (settings.gradle) ==="
+          find scaffold/android -maxdepth 1 -name "settings.gradle*" -exec cat {} \;
 
       - name: Clone mã nguồn chính thức MNN (Alibaba)
         run: git clone --depth 1 https://github.com/alibaba/MNN.git

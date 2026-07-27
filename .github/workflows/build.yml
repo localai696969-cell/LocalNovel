@@ -6,9 +6,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ĐÃ SỬA (2026-07-27): trước đây dùng `channel: stable` — nghĩa là MỖI
+      # LẦN chạy workflow, Actions tải bản Flutter "stable" MỚI NHẤT TẠI ĐÚNG
+      # THỜI ĐIỂM ĐÓ, không phải cùng 1 bản như lần build trước. Đây là
+      # nguyên nhân gốc khiến cùng 1 bộ source code (không đổi dòng nào) có
+      # thể build được ở lần này nhưng lỗi ở lần khác — không phải trùng hợp,
+      # mà là hệ quả tất yếu của việc không pin version.
+      #
+      # QUAN TRỌNG - MINH BẠCH: con số 3.44.7 dưới đây là bản Flutter stable
+      # mới nhất tại thời điểm sửa file này (tra cứu thật từ docs.flutter.dev,
+      # không phải đoán) — KHÔNG có cách nào xác nhận đây có đúng là bản đã
+      # từng build thành công trước đó hay không, vì tài liệu kỹ thuật của dự
+      # án chưa từng ghi lại con số đó. Tác dụng thật của việc pin này là:
+      # TỪ BÂY GIỜ TRỞ ĐI, mọi lần build đều dùng đúng 1 bản Flutter, không
+      # còn trôi theo ngày giờ chạy nữa — nếu build lần này thành công, hãy
+      # GIỮ NGUYÊN con số này, không đổi, trừ khi chủ động muốn nâng cấp.
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.44.7'
+          channel: 'stable'
 
       - name: Cài NDK mới nhất có sẵn (bản cũ không hỗ trợ SVE2/KleidiAI)
         run: |
@@ -46,6 +62,18 @@ jobs:
           rm -rf scaffold/lib
           cp -r extracted/local_novel/lib scaffold/lib
           cp extracted/local_novel/pubspec.yaml scaffold/pubspec.yaml
+          # ĐÃ THÊM (2026-07-27): nếu source zip đã có sẵn pubspec.lock (từ
+          # lần build trước, tự tải về qua artifact "pubspec-lock" ở cuối
+          # workflow này) thì copy luôn qua — `flutter pub get` sẽ tôn trọng
+          # file lock này, không tự ý nâng version bất kỳ gói nào (kể cả gói
+          # gián tiếp như jni) nữa. Nếu chưa có (lần đầu chạy với bản sửa
+          # này), bỏ qua bình thường, không lỗi.
+          if [ -f extracted/local_novel/pubspec.lock ]; then
+            echo "Tìm thấy pubspec.lock có sẵn trong source — dùng lại để khoá version."
+            cp extracted/local_novel/pubspec.lock scaffold/pubspec.lock
+          else
+            echo "CHƯA có pubspec.lock trong source — pub sẽ tự giải cây dependency mới. Nhớ tải artifact 'pubspec-lock' ở cuối lần chạy này, đưa vào cùng chỗ pubspec.yaml trong zip nguồn, để lần sau khoá version lại."
+          fi
 
       - name: Đổi tên app hiển thị thành LocalNovel
         run: sed -i 's/android:label="[^"]*"/android:label="LocalNovel"/' scaffold/android/app/src/main/AndroidManifest.xml
@@ -59,7 +87,41 @@ jobs:
         working-directory: scaffold
         run: flutter pub get
 
-      # ================== TỪ ĐÂY LÀ PHẦN MỚI: BUILD ENGINE MNN + QNN ==================
+      # ĐÃ THÊM (2026-07-27): vá lỗi build "Could not find method kotlin()
+      # for arguments [...] on project ':jni'" — package `jni` không được
+      # khai báo trực tiếp trong pubspec.yaml của app, nó bị 1 gói khác kéo
+      # vào gián tiếp ở bản 1.0.1, bản này có build.gradle gọi hàm kotlin()
+      # không tương thích với tổ hợp Gradle/Kotlin/AGP hiện tại. Bản `jni`
+      # mới hơn đã bỏ hẳn cách gọi này (xem changelog chính thức: "Removed
+      # the dependency on kotlin_gradle_plugin"). Dùng --major-versions để
+      # luôn lấy đúng bản MỚI NHẤT thật có trên pub.dev tại thời điểm build,
+      # không cần hardcode số phiên bản (số đó sẽ đổi theo thời gian, hardcode
+      # vào đây sẽ lại lỗi thời y như jni: 1.0.1 đang lỗi bây giờ).
+      #
+      # CHỈ chạy nếu jni thực sự có mặt trong cây dependency (tránh lỗi nếu
+      # sau này nó không còn bị kéo vào nữa) — không làm gì nếu không tìm
+      # thấy, không làm gãy build vì 1 bước phòng ngừa không cần thiết.
+      - name: Nâng jni lên bản mới nhất (vá lỗi kotlin() Gradle không tương thích)
+        working-directory: scaffold
+        run: |
+          if flutter pub deps --style=list 2>/dev/null | grep -q "^jni "; then
+            echo "Tìm thấy jni trong cây dependency — nâng lên bản mới nhất."
+            flutter pub upgrade jni --major-versions
+          else
+            echo "Không thấy jni trong cây dependency lần này — bỏ qua bước vá."
+          fi
+
+      # ĐÃ THÊM (2026-07-27): lưu lại đúng pubspec.lock THẬT của lần build
+      # này (dù thành công hay thất bại ở các bước sau) — để tải về, đưa vào
+      # zip nguồn cho lần sau, từ đó khoá version, không còn trôi nữa.
+      - name: Lưu lại pubspec.lock của lần build này (để khoá version cho lần sau)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pubspec-lock
+          path: scaffold/pubspec.lock
+
+      # ================== TỪ ĐÂY LÀ PHẦN CŨ: BUILD ENGINE MNN + QNN (không đổi) ==================
 
       - name: Clone mã nguồn chính thức MNN (Alibaba)
         run: git clone --depth 1 https://github.com/alibaba/MNN.git
@@ -180,7 +242,7 @@ jobs:
       - name: Kiểm tra build.gradle đã thêm dependency thành công chưa
         run: cat scaffold/android/app/build.gradle*
 
-      # ================== HẾT PHẦN MỚI ==================
+      # ================== HẾT PHẦN CŨ ==================
 
       # QUAN TRỌNG: đã xác nhận qua log debug thật trên máy — JNI
       # GetMethodID("onToken", ...) trả về NULL ở bản release, tên lớp

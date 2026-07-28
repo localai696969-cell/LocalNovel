@@ -299,6 +299,13 @@ jobs:
           cp extracted/local_novel/android_native/app/src/main/cpp/mnn_bridge.cpp scaffold/android/app/src/main/cpp/
           cp extracted/local_novel/android_native/app/src/main/cpp/CMakeLists.txt scaffold/android/app/src/main/cpp/
 
+          echo "=== XAC NHAN (2026-07-28): mnn_bridge.cpp THAT SU dang duoc dung de build co chua dong sua createLLM/llm_config.json hay khong ==="
+          if grep -q "duong dan config THAT dung de goi createLLM" scaffold/android/app/src/main/cpp/mnn_bridge.cpp; then
+            echo "✅ CO — dong sua ve llm_config.json DA co mat trong file se duoc bien dich lan nay."
+          else
+            echo "💥 KHONG THAY — file mnn_bridge.cpp dang duoc dung KHONG chua ban sua createLLM/llm_config.json. Kiem tra lai zip source da upload dung ban moi nhat chua."
+          fi
+
           echo "=== Xác nhận nội dung MainActivity.kt cuối cùng (phải thấy dòng đăng ký MethodChannel) ==="
           cat "scaffold/android/app/src/main/kotlin/$REAL_PACKAGE_PATH/MainActivity.kt"
 

@@ -306,6 +306,18 @@ jobs:
             echo "💥 KHONG THAY — file mnn_bridge.cpp dang duoc dung KHONG chua ban sua createLLM/llm_config.json. Kiem tra lai zip source da upload dung ban moi nhat chua."
           fi
 
+          echo "=== XAC NHAN (2026-07-29, MOI HON): mnn_bridge.cpp co chua ban sua use_mmap + chot chan chong lenh (muc 5.37) hay khong ==="
+          if grep -q "use_mmap" scaffold/android/app/src/main/cpp/mnn_bridge.cpp; then
+            echo "✅ CO use_mmap — dung ban sua MOI NHAT (muc 5.37)."
+          else
+            echo "💥 KHONG CO use_mmap — dang dung ban CU HON muc 5.37, du co the da co dong sua config.json cu hon (muc 33/35). Kiem tra lai zip source."
+          fi
+          if grep -q "g_loadingInProgress" scaffold/android/app/src/main/cpp/mnn_bridge.cpp; then
+            echo "✅ CO chot chan chong lenh (g_loadingInProgress)."
+          else
+            echo "💥 KHONG CO chot chan chong lenh — dang dung ban cu hon."
+          fi
+
           echo "=== Xác nhận nội dung MainActivity.kt cuối cùng (phải thấy dòng đăng ký MethodChannel) ==="
           cat "scaffold/android/app/src/main/kotlin/$REAL_PACKAGE_PATH/MainActivity.kt"
 

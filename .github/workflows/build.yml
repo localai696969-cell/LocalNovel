@@ -318,6 +318,13 @@ jobs:
             echo "💥 KHONG CO chot chan chong lenh — dang dung ban cu hon."
           fi
 
+          echo "=== XAC NHAN (2026-07-29, MOI NHAT): mnn_bridge.cpp co chua bo bat crash tu viet (muc 5.39) hay khong ==="
+          if grep -q "crashSignalHandler" scaffold/android/app/src/main/cpp/mnn_bridge.cpp; then
+            echo "✅ CO bo bat crash tu viet — day la ban MOI NHAT (muc 5.39)."
+          else
+            echo "💥 KHONG CO bo bat crash tu viet — dang dung ban CU HON muc 5.39 (co the van la ban muc 5.37, du da co use_mmap)."
+          fi
+
           echo "=== Xác nhận nội dung MainActivity.kt cuối cùng (phải thấy dòng đăng ký MethodChannel) ==="
           cat "scaffold/android/app/src/main/kotlin/$REAL_PACKAGE_PATH/MainActivity.kt"
 

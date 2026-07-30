@@ -141,6 +141,29 @@ jobs:
           sed -i 's#<application#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
           sed -i 's#<manifest #<manifest xmlns:tools="http://schemas.android.com/tools" #' scaffold/android/app/src/main/AndroidManifest.xml
 
+      # ĐÃ THÊM (2026-07-30, phát hiện quan trọng): `GenerationService.kt` viết
+      # đúng (Foreground Service + WakeLock), được gọi đúng từ MnnBridge.kt,
+      # NHƯNG chưa từng khai báo trong AndroidManifest.xml — Android BẮT BUỘC
+      # khai báo <service> mới cho startForegroundService() chạy được, và với
+      # compileSdk 35 (Android 15) còn bắt buộc khai báo rõ
+      # android:foregroundServiceType, thiếu là lỗi ngay khi gọi. Đây rất có
+      # thể là lý do suốt từ đầu dự án, app bị hệ điều hành đóng băng tiến
+      # trình khi tắt màn hình (WakeLock chưa từng thực sự giữ được CPU thức),
+      # dù code Kotlin hoàn toàn đúng.
+      - name: Khai báo GenerationService (Foreground Service) trong Manifest — thiếu bước này khiến WakeLock/Foreground Service không có tác dụng
+        run: |
+          sed -i 's#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/><uses-permission android:name="android.permission.WAKE_LOCK"/>#' scaffold/android/app/src/main/AndroidManifest.xml
+          python3 -c "
+          path = 'scaffold/android/app/src/main/AndroidManifest.xml'
+          content = open(path).read()
+          service_tag = '<service android:name=\"com.localnovel.mnnbridge.GenerationService\" android:foregroundServiceType=\"dataSync\" android:exported=\"false\" />'
+          assert '</application>' in content, 'Khong tim thay the dong </application> trong Manifest'
+          content = content.replace('</application>', service_tag + '</application>')
+          open(path, 'w').write(content)
+          print('=== Noi dung AndroidManifest.xml SAU khi them service ===')
+          print(content)
+          "
+
       - name: Cài thư viện Dart
         working-directory: scaffold
         run: flutter pub get

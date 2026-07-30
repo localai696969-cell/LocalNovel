@@ -369,6 +369,11 @@ jobs:
           QNN_LIB_DIR="MNN/source/backend/qnn/3rdParty/lib"
           cp "$QNN_LIB_DIR/aarch64-android/libQnnHtp.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtp.so — xem log tải QNN SDK ở bước trước"
           cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpPrepare.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpPrepare.so"
+          # THEM (2026-07-30): libQnnSystem.so — theo tai lieu chinh thuc
+          # MNN Chat (apps/Android/MnnLlmChat), day la 1 trong 5 thanh phan
+          # BAT BUOC cho QNN nhung truoc gio build.yml CHUA TUNG copy file
+          # nay — thieu no co the la nguyen nhan crash SIGSEGV khi QNN chay.
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnSystem.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnSystem.so — kiem tra lai cau truc thu muc QNN SDK o duoi"
           cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpV${HEXAGON_ARCH}Stub.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpV${HEXAGON_ARCH}Stub.so — có thể sai HEXAGON_ARCH, xem danh sách file thật ở dòng dưới"
           cp "$QNN_LIB_DIR/hexagon-v${HEXAGON_ARCH}/unsigned/libQnnHtpV${HEXAGON_ARCH}Skel.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpV${HEXAGON_ARCH}Skel.so — có thể sai HEXAGON_ARCH"
           echo "=== Toàn bộ thư mục lib thật trong QNN SDK (đối chiếu nếu HEXAGON_ARCH ở trên sai) ==="

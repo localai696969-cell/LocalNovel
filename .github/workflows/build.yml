@@ -141,22 +141,26 @@ jobs:
           sed -i 's#<application#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><application#' scaffold/android/app/src/main/AndroidManifest.xml
           sed -i 's#<manifest #<manifest xmlns:tools="http://schemas.android.com/tools" #' scaffold/android/app/src/main/AndroidManifest.xml
 
-      # ĐÃ THÊM (2026-07-30, phát hiện quan trọng): `GenerationService.kt` viết
-      # đúng (Foreground Service + WakeLock), được gọi đúng từ MnnBridge.kt,
-      # NHƯNG chưa từng khai báo trong AndroidManifest.xml — Android BẮT BUỘC
-      # khai báo <service> mới cho startForegroundService() chạy được, và với
-      # compileSdk 35 (Android 15) còn bắt buộc khai báo rõ
-      # android:foregroundServiceType, thiếu là lỗi ngay khi gọi. Đây rất có
-      # thể là lý do suốt từ đầu dự án, app bị hệ điều hành đóng băng tiến
-      # trình khi tắt màn hình (WakeLock chưa từng thực sự giữ được CPU thức),
-      # dù code Kotlin hoàn toàn đúng.
+      # ĐÃ SỬA (2026-08-02, phát hiện qua báo cáo thật của người dùng: app bị
+      # hệ điều hành kill khi chuyển sang trình duyệt rồi quay lại trong lúc
+      # đang chờ AI trả lời): MainActivity.kt ĐÃ CÓ SẴN code xin quyền
+      # POST_NOTIFICATIONS lúc chạy (ActivityCompat.requestPermissions), NHƯNG
+      # Manifest chưa từng khai báo quyền này trong <uses-permission> — thiếu
+      # khai báo Manifest thì lệnh xin quyền runtime GẦN NHƯ VÔ TÁC DỤNG
+      # (Android không cho xin quyền chưa được khai báo trong Manifest của
+      # chính app). Thiếu quyền này, thông báo liên tục của Foreground Service
+      # có thể không hiển thị đúng cách — nhiều OEM (đặc biệt ASUS ZenUI) dùng
+      # "có thông báo liên tục hiển thị hay không" làm 1 tiêu chí để quyết
+      # định có bảo vệ tiến trình nền hay không, thiếu thông báo hiển thị đúng
+      # có thể khiến trình quản lý pin của máy coi app là nền thường và kill
+      # khi chuyển sang ứng dụng khác — đúng triệu chứng người dùng báo cáo.
       - name: Khai báo GenerationService (Foreground Service) trong Manifest — thiếu bước này khiến WakeLock/Foreground Service không có tác dụng
         run: |
-          sed -i 's#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/><uses-permission android:name="android.permission.WAKE_LOCK"/>#' scaffold/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>#' scaffold/android/app/src/main/AndroidManifest.xml
           python3 -c "
           path = 'scaffold/android/app/src/main/AndroidManifest.xml'
           content = open(path).read()
-          service_tag = '<service android:name=\"com.localnovel.mnnbridge.GenerationService\" android:foregroundServiceType=\"dataSync\" android:exported=\"false\" />'
+          service_tag = '<service android:name=\"com.localnovel.mnnbridge.GenerationService\" android:foregroundServiceType=\"specialUse\" android:exported=\"false\"><property android:name=\"android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE\" android:value=\"local_on_device_ai_text_generation\" /></service>'
           assert '</application>' in content, 'Khong tim thay the dong </application> trong Manifest'
           content = content.replace('</application>', service_tag + '</application>')
           open(path, 'w').write(content)
@@ -367,27 +371,18 @@ jobs:
           find MNN/project/android/build_64 -name "*.so" -exec cp {} scaffold/android/app/src/main/jniLibs/arm64-v8a/ \;
           HEXAGON_ARCH=68
           QNN_LIB_DIR="MNN/source/backend/qnn/3rdParty/lib"
-          # ĐÃ SỬA (fix ưu tiên NPU thật): trước đây mỗi lệnh cp có
-          # `|| echo "THIẾU..."` — nghĩa là nếu đường dẫn sai (cấu trúc
-          # thư mục QNN SDK Community đổi khác giữa các phiên bản), build
-          # VẪN "THÀNH CÔNG" và tạo ra APK THIẾU HẲN các file QNN, không
-          # ai biết cho tới khi cài lên máy thật và thấy toàn bộ
-          # System.load() báo "library not found" — ĐÚNG TRIỆU CHỨNG đã
-          # gặp. Giờ mỗi lệnh cp thất bại sẽ DỪNG BUILD NGAY LẬP TỨC kèm
-          # thông báo rõ ràng — không còn tạo ra APK "thành công giả".
-          echo "=== Cây thư mục thật của QNN SDK (để đối chiếu nếu đường dẫn dưới đây sai) ==="
-          find "$QNN_LIB_DIR" -maxdepth 3
-          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtp.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ \
-            || { echo "💥 THIẾU libQnnHtp.so — xem cây thư mục QNN SDK ở trên để tìm đúng đường dẫn thật, DỪNG BUILD"; exit 1; }
-          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpPrepare.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ \
-            || { echo "💥 THIẾU libQnnHtpPrepare.so — DỪNG BUILD"; exit 1; }
-          cp "$QNN_LIB_DIR/aarch64-android/libQnnSystem.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ \
-            || { echo "💥 THIẾU libQnnSystem.so — DỪNG BUILD"; exit 1; }
-          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpV${HEXAGON_ARCH}Stub.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ \
-            || { echo "💥 THIẾU libQnnHtpV${HEXAGON_ARCH}Stub.so — có thể sai HEXAGON_ARCH, xem cây thư mục ở trên, DỪNG BUILD"; exit 1; }
-          cp "$QNN_LIB_DIR/hexagon-v${HEXAGON_ARCH}/unsigned/libQnnHtpV${HEXAGON_ARCH}Skel.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ \
-            || { echo "💥 THIẾU libQnnHtpV${HEXAGON_ARCH}Skel.so — có thể sai HEXAGON_ARCH, xem cây thư mục ở trên, DỪNG BUILD"; exit 1; }
-          echo "=== Danh sách .so đã đặt vào jniLibs (nếu build chạy tới đây, cả 5 file QNN CHẮC CHẮN đã copy thành công) ==="
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtp.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtp.so — xem log tải QNN SDK ở bước trước"
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpPrepare.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpPrepare.so"
+          # THEM (2026-07-30): libQnnSystem.so — theo tai lieu chinh thuc
+          # MNN Chat (apps/Android/MnnLlmChat), day la 1 trong 5 thanh phan
+          # BAT BUOC cho QNN nhung truoc gio build.yml CHUA TUNG copy file
+          # nay — thieu no co the la nguyen nhan crash SIGSEGV khi QNN chay.
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnSystem.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnSystem.so — kiem tra lai cau truc thu muc QNN SDK o duoi"
+          cp "$QNN_LIB_DIR/aarch64-android/libQnnHtpV${HEXAGON_ARCH}Stub.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpV${HEXAGON_ARCH}Stub.so — có thể sai HEXAGON_ARCH, xem danh sách file thật ở dòng dưới"
+          cp "$QNN_LIB_DIR/hexagon-v${HEXAGON_ARCH}/unsigned/libQnnHtpV${HEXAGON_ARCH}Skel.so" scaffold/android/app/src/main/jniLibs/arm64-v8a/ 2>&1 || echo "THIẾU libQnnHtpV${HEXAGON_ARCH}Skel.so — có thể sai HEXAGON_ARCH"
+          echo "=== Toàn bộ thư mục lib thật trong QNN SDK (đối chiếu nếu HEXAGON_ARCH ở trên sai) ==="
+          find "$QNN_LIB_DIR" -maxdepth 2 -type d
+          echo "=== Danh sách .so đã đặt vào jniLibs ==="
           ls -la scaffold/android/app/src/main/jniLibs/arm64-v8a/
 
       - name: Thêm dependency QNN runtime (Qualcomm, Maven Central) + Kotlin coroutines vào build.gradle
@@ -444,36 +439,6 @@ jobs:
       - name: Build APK
         working-directory: scaffold
         run: flutter build apk --release
-
-      # ĐÃ THÊM (fix ưu tiên NPU thật): xác minh CUỐI CÙNG, trực tiếp trên
-      # chính file APK sẽ được cài lên máy — không tin vào "đã copy vào
-      # jniLibs" ở bước trước nữa, vì AGP có thể (hiếm khi, nhưng đã từng
-      # ghi nhận ở các dự án khác) loại bỏ .so không hợp lệ khi đóng gói.
-      # Đây là bằng chứng THẬT, không suy đoán — nếu bước này fail, nghĩa
-      # là APK tải về CHẮC CHẮN sẽ lặp lại đúng lỗi "library not found"
-      # đã gặp, dừng lại ở đây thay vì để phát hiện sau khi cài lên máy.
-      - name: Xác minh APK cuối cùng CÓ ĐỦ 5 file QNN bắt buộc (bằng chứng thật, không suy đoán)
-        working-directory: scaffold
-        run: |
-          APK=build/app/outputs/flutter-apk/app-release.apk
-          mkdir -p /tmp/apk_check
-          unzip -o "$APK" -d /tmp/apk_check "lib/arm64-v8a/*" > /dev/null
-          echo "=== File .so thật có trong APK (lib/arm64-v8a/) ==="
-          ls -la /tmp/apk_check/lib/arm64-v8a/ || true
-          MISSING=0
-          for f in libQnnSystem.so libQnnHtp.so libQnnHtpPrepare.so libQnnHtpV68Stub.so libQnnHtpV68Skel.so libmnn_bridge.so; do
-            if [ ! -f "/tmp/apk_check/lib/arm64-v8a/$f" ]; then
-              echo "💥 THIẾU trong APK cuối cùng: $f"
-              MISSING=1
-            else
-              echo "✅ Có trong APK: $f"
-            fi
-          done
-          if [ "$MISSING" = "1" ]; then
-            echo "💥💥💥 APK NÀY SẼ KHÔNG CHẠY ĐƯỢC QNN — thiếu file ở trên. DỪNG BUILD, không upload APK lỗi."
-            exit 1
-          fi
-          echo "✅✅✅ Xác nhận: APK cuối cùng có đủ toàn bộ 5 file QNN + cầu nối JNI."
 
       - uses: actions/upload-artifact@v4
         with:

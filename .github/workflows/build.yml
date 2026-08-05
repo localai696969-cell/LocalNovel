@@ -156,7 +156,7 @@ jobs:
       # khi chuyển sang ứng dụng khác — đúng triệu chứng người dùng báo cáo.
       - name: Khai báo GenerationService (Foreground Service) trong Manifest — thiếu bước này khiến WakeLock/Foreground Service không có tác dụng
         run: |
-          sed -i 's#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>#' scaffold/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>#' scaffold/android/app/src/main/AndroidManifest.xml
           python3 -c "
           path = 'scaffold/android/app/src/main/AndroidManifest.xml'
           content = open(path).read()

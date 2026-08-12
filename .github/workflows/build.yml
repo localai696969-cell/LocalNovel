@@ -248,6 +248,42 @@ jobs:
       - name: Clone mã nguồn chính thức MNN (Alibaba)
         run: git clone --depth 1 https://github.com/alibaba/MNN.git
 
+      # ĐÃ THÊM: build #80 thất bại thật với lỗi
+      # "transformers/llm/engine/demo/qwen3_tts_demo.cpp:8:10: fatal error:
+      # 'audio/audio.hpp' file not found" — đây là lỗi PHÍA THƯỢNG NGUỒN
+      # MNN (git clone --depth 1 từ nhánh master luôn lấy commit MỚI NHẤT,
+      # và bản mới nhất có 1 demo TTS chưa hoàn thiện, thiếu header, nhưng
+      # vẫn được CMake build KHÔNG ĐIỀU KIỆN mỗi khi MNN_BUILD_LLM=true —
+      # xác nhận qua tra cứu: tuỳ chọn MNN_BUILD_AUDIO mặc định OFF nhưng
+      # không hề chặn được target demo này, tức là lỗi thiết kế/thiếu sót ở
+      # phía MNN, không phải build.yml thiếu cờ nào). App này KHÔNG cần bất
+      # kỳ demo executable nào của MNN (llm_demo, embedding_demo,
+      # qwen3_tts_demo...) — chỉ cần thư viện libMNN.so + libllm.so để JNI
+      # liên kết vào. Xoá dòng đăng ký target "qwen3_tts_demo" khỏi
+      # CMakeLists.txt của thư mục demo TRƯỚC khi build, để CMake không
+      # bao giờ cố biên dịch file .cpp bị hỏng đó nữa — dùng sed xoá theo
+      # TÊN TARGET (khớp mọi dòng chứa "qwen3_tts_demo", thường là dòng
+      # add_executable + dòng target_link_libraries) thay vì đoán chính
+      # xác cú pháp CMake nội bộ của MNN, để không phụ thuộc việc MNN thay
+      # đổi cấu trúc file trong tương lai.
+      - name: Vá bỏ demo TTS hỏng của MNN (thiếu audio/audio.hpp, không dùng tới trong app này)
+        run: |
+          DEMO_CMAKE="MNN/transformers/llm/engine/demo/CMakeLists.txt"
+          if [ -f "$DEMO_CMAKE" ]; then
+            echo "=== Nội dung liên quan qwen3_tts_demo TRƯỚC khi vá ==="
+            grep -n "qwen3_tts_demo" "$DEMO_CMAKE" || echo "(không tìm thấy dòng nào chứa qwen3_tts_demo — có thể MNN đã đổi cấu trúc, cần xem lại)"
+            sed -i '/qwen3_tts_demo/d' "$DEMO_CMAKE"
+            echo "=== Xác nhận đã xoá sạch (không được in ra dòng nào) ==="
+            grep -n "qwen3_tts_demo" "$DEMO_CMAKE" || echo "OK: đã xoá sạch."
+          else
+            echo "CẢNH BÁO: không thấy $DEMO_CMAKE — cấu trúc thư mục MNN có thể đã đổi, kiểm tra lại đường dẫn."
+          fi
+          # Phòng thêm trường hợp file .cpp bị glob/quét thư mục thay vì
+          # add_executable tường minh (một số CMakeLists dùng file(GLOB...)
+          # để tự động gom mọi .cpp trong thư mục demo) — xoá luôn file .cpp
+          # nguồn cho chắc, không còn gì để glob nhặt vào build nữa.
+          rm -f MNN/transformers/llm/engine/demo/qwen3_tts_demo.cpp
+
       # QNN backend của MNN cần header + thư viện thật của Qualcomm
       # (QnnInterface.h...) — đây là SDK độc quyền, MNN không mang theo
       # sẵn. Bản "Community" tải công khai được, không cần đăng nhập tài

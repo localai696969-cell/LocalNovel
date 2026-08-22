@@ -436,6 +436,32 @@ jobs:
           find "$QNN_LIB_DIR" -maxdepth 2 -type d
           echo "=== Danh sách .so đã đặt vào jniLibs ==="
           ls -la scaffold/android/app/src/main/jniLibs/arm64-v8a/
+          # ĐÃ THÊM (theo log runtime thật cho thấy CẢ 5 file QNN đều
+          # UnsatisfiedLinkError/không tồn tại — build này rõ ràng đã "thành
+          # công" dù copy thất bại hết, vì mỗi `cp` ở trên chỉ `|| echo` cảnh
+          # báo chứ không dừng build): kiểm tra LẠI sau khi copy, in CẢNH BÁO
+          # LỚN không thể bỏ sót trong log CI nếu thiếu file — KHÔNG làm build
+          # thất bại hẳn (exit 1), vì app vẫn chạy được qua fallback OpenCL/CPU
+          # (xem local_provider.dart) — chỉ đảm bảo người review KHÔNG bỏ sót
+          # cảnh báo giữa hàng trăm dòng log build bình thường.
+          echo "=== Kiểm tra đủ 5 file QNN bắt buộc ==="
+          MISSING_QNN=0
+          for f in libQnnHtp.so libQnnHtpPrepare.so libQnnSystem.so "libQnnHtpV${HEXAGON_ARCH}Stub.so" "libQnnHtpV${HEXAGON_ARCH}Skel.so"; do
+            if [ ! -f "scaffold/android/app/src/main/jniLibs/arm64-v8a/$f" ]; then
+              echo "!!!!! THIẾU: $f !!!!!"
+              MISSING_QNN=1
+            fi
+          done
+          if [ "$MISSING_QNN" = "1" ]; then
+            echo "##########################################################"
+            echo "## CẢNH BÁO: THIẾU ÍT NHẤT 1 FILE QNN BẮT BUỘC.           ##"
+            echo "## Build này VẪN chạy được (fallback OpenCL/CPU tự động), ##"
+            echo "## NHƯNG QNN (tăng tốc NPU) SẼ KHÔNG HOẠT ĐỘNG trên máy   ##"
+            echo "## dù thiết bị có hỗ trợ thật — kiểm tra lại đường dẫn    ##"
+            echo "## QNN_LIB_DIR/HEXAGON_ARCH ở trên, đối chiếu với danh    ##"
+            echo "## sách thư mục thật đã in phía trên.                     ##"
+            echo "##########################################################"
+          fi
 
       - name: Thêm dependency QNN runtime (Qualcomm, Maven Central) + Kotlin coroutines vào build.gradle
         run: |

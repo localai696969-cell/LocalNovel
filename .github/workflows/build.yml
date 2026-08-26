@@ -248,6 +248,32 @@ jobs:
       - name: Clone mã nguồn chính thức MNN (Alibaba)
         run: git clone --depth 1 https://github.com/alibaba/MNN.git
 
+      # ĐÃ THÊM (theo yêu cầu người dùng: "sao không tra cứu cách MNN/cộng
+      # đồng giải quyết vấn đề" — tra cứu thật thì tìm được: changelog
+      # chính thức MNN bản 3.4.1 ghi rõ "LLM 资源管理优化: LLM 实例内置独立
+      # Executor 并在所有公开方法中使用 ExecutorScope，确保正确的资源作用
+      # 域和及时释放" (dịch: mỗi instance Llm giờ tự tạo Executor RIÊNG,
+      # dùng ExecutorScope ở MỌI public method, đảm bảo phạm vi tài
+      # nguyên đúng và giải phóng kịp thời) — ĐÚNG NGUYÊN VĂN loại lỗi đã
+      # đo được bằng VmRSS (mục 23 tài liệu kiến trúc: ~2.58GB không được
+      # giải phóng khi đổi model trong cùng tiến trình). `git clone --depth
+      # 1` luôn lấy đúng HEAD của `master` tại THỜI ĐIỂM BUILD — nên rất
+      # có thể bản đang chạy ĐÃ CÓ fix này rồi (master luôn đi sau tag
+      # release). Nhưng vì `--depth 1` không giữ lại tag/version rõ ràng,
+      # KHÔNG CÓ CÁCH NÀO xác nhận trong log cũ đã build với đúng commit
+      # nào — in ra đây để MỌI LẦN BUILD SAU đều có commit hash + (nếu
+      # tìm thấy) số version thật, đối chiếu được với lịch sử fix của MNN
+      # khi cần điều tra tiếp.
+      - name: In thông tin commit/version MNN THẬT ĐÃ CLONE (để đối chiếu về sau — mục 23-24 tài liệu kiến trúc)
+        working-directory: MNN
+        run: |
+          echo "=== MNN commit hash (git clone --depth 1 từ master, LUÔN LÀ HEAD tại thời điểm build này) ==="
+          git rev-parse HEAD
+          git log -1 --format="%cI %s"
+          echo "=== Tìm file version nếu MNN có khai báo tường minh ==="
+          find . -maxdepth 2 -iname "*version*" -type f 2>/dev/null | head -5
+          grep -rn "MNN_VERSION" include/MNN/MNNDefine.h 2>/dev/null || echo "(không thấy MNN_VERSION trong MNNDefine.h — có thể đổi vị trí ở bản này)"
+
       # ĐÃ SỬA LẦN 2 (build #82 xác nhận cách vá lần 1 SAI — xem mục 5.81
       # tài liệu kiến trúc để biết đầy đủ): build #80 thất bại thật với
       # lỗi "transformers/llm/engine/demo/qwen3_tts_demo.cpp:8:10: fatal

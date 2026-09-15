@@ -356,10 +356,47 @@ jobs:
       - name: Build engine MNN native (bật LLM + OpenCL GPU + QNN NPU)
         working-directory: MNN/project/android
         run: |
-          mkdir build_64
-          cd build_64
-          ../build_64.sh "-DMNN_LOW_MEMORY=true -DMNN_CPU_WEIGHT_DEQUANT_GEMM=true -DMNN_BUILD_LLM=true -DMNN_SUPPORT_TRANSFORMER_FUSE=true -DMNN_ARM82=true -DMNN_USE_LOGCAT=true -DMNN_OPENCL=true -DMNN_QNN=true -DMNN_SEP_BUILD=OFF -DCMAKE_INSTALL_PREFIX=."
-          make install
+          # ĐÃ THÊM (theo yêu cầu người dùng, sau khi build #133 thất bại
+          # thật ở bước CẤU HÌNH CMake CỦA CHÍNH KHO MNN — file
+          # `test/CMakeLists.txt` lỗi cú pháp "thiếu dấu đóng ngoặc, hết
+          # file". Lỗi nằm ở kho bên thứ ba (alibaba/MNN), không phải code
+          # app này. `git clone --depth 1` (bước trên) luôn lấy đúng HEAD
+          # `master` tại thời điểm build — có lợi THẬT (luôn có tính
+          # năng/bản vá MNN mới nhất — chính "penalty" trong
+          # `mixed_samplers` app đang dùng chỉ có từ bản 3.5.0 trở lên),
+          # nhưng cũng có nghĩa build phụ thuộc vào việc master KHÔNG lỗi
+          # tạm thời đúng lúc build chạy — rủi ro có thật, ngoài tầm kiểm
+          # soát của app. Theo đúng yêu cầu người dùng ("không đánh đổi
+          # bản mới nhất, làm fallback"): vẫn ưu tiên build bằng bản vừa
+          # clone (master); CHỈ KHI build đó thất bại mới xoá sạch, clone
+          # lại đúng 1 bản TAG ỔN ĐỊNH đã biết (3.6.0, phát hành chính
+          # thức 2026-06 — ngay TRƯỚC bản 3.6.1 đang lỗi ở build #133; đã
+          # có sẵn "penalty" trong sampler pipeline từ bản 3.5.0, đủ mới
+          # cho mọi tính năng app đang dùng) rồi build lại đúng 1 lần.
+          set +e
+          mkdir build_64 && cd build_64 && \
+            ../build_64.sh "-DMNN_LOW_MEMORY=true -DMNN_CPU_WEIGHT_DEQUANT_GEMM=true -DMNN_BUILD_LLM=true -DMNN_SUPPORT_TRANSFORMER_FUSE=true -DMNN_ARM82=true -DMNN_USE_LOGCAT=true -DMNN_OPENCL=true -DMNN_QNN=true -DMNN_SEP_BUILD=OFF -DCMAKE_INSTALL_PREFIX=." && \
+            make install
+          BUILD_RESULT=$?
+          set -e
+
+          if [ $BUILD_RESULT -ne 0 ]; then
+            echo "!!! Build bang MNN master (HEAD moi nhat) THAT BAI — xem log ngay phia tren de biet ly do that. Rat co the master dang loi tam thoi. Chuyen sang ban ON DINH da biet: tag 3.6.0 !!!"
+            cd "$GITHUB_WORKSPACE"
+            rm -rf MNN
+            git clone --depth 1 --branch 3.6.0 https://github.com/alibaba/MNN.git
+            echo "MA_NGUON_MNN_THAT_DUNG=tag-3.6.0-fallback" >> $GITHUB_ENV
+            mkdir -p MNN/source/backend/qnn/3rdParty
+            cp -r "$QNN_SDK_ROOT/include/QNN" MNN/source/backend/qnn/3rdParty/include
+            cp -r "$QNN_SDK_ROOT/lib" MNN/source/backend/qnn/3rdParty/lib
+            cd MNN/project/android
+            mkdir build_64 && cd build_64
+            ../build_64.sh "-DMNN_LOW_MEMORY=true -DMNN_CPU_WEIGHT_DEQUANT_GEMM=true -DMNN_BUILD_LLM=true -DMNN_SUPPORT_TRANSFORMER_FUSE=true -DMNN_ARM82=true -DMNN_USE_LOGCAT=true -DMNN_OPENCL=true -DMNN_QNN=true -DMNN_SEP_BUILD=OFF -DCMAKE_INSTALL_PREFIX=."
+            make install
+          else
+            echo "MA_NGUON_MNN_THAT_DUNG=master-HEAD" >> $GITHUB_ENV
+          fi
+          echo "=== Ban MNN THAT SU vua duoc dung de build: $MA_NGUON_MNN_THAT_DUNG ==="
 
       - name: In cấu trúc thư mục install thật (để xác nhận đúng đường dẫn .so/header trước khi build cầu nối)
         run: |

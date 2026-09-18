@@ -154,17 +154,18 @@ jobs:
       # định có bảo vệ tiến trình nền hay không, thiếu thông báo hiển thị đúng
       # có thể khiến trình quản lý pin của máy coi app là nền thường và kill
       # khi chuyển sang ứng dụng khác — đúng triệu chứng người dùng báo cáo.
-      - name: Khai báo GenerationService (Foreground Service) trong Manifest — thiếu bước này khiến WakeLock/Foreground Service không có tác dụng
+      - name: Khai báo GenerationService (Foreground Service) + CancelGenerationReceiver (nút Hủy trên notification) trong Manifest — thiếu bước này khiến WakeLock/Foreground Service/nút Hủy không có tác dụng
         run: |
           sed -i 's#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>#<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>#' scaffold/android/app/src/main/AndroidManifest.xml
           python3 -c "
           path = 'scaffold/android/app/src/main/AndroidManifest.xml'
           content = open(path).read()
           service_tag = '<service android:name=\"com.localnovel.mnnbridge.GenerationService\" android:foregroundServiceType=\"specialUse\" android:exported=\"false\"><property android:name=\"android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE\" android:value=\"local_on_device_ai_text_generation\" /></service>'
+          receiver_tag = '<receiver android:name=\"com.localnovel.mnnbridge.CancelGenerationReceiver\" android:exported=\"false\"><intent-filter><action android:name=\"com.localnovel.mnnbridge.ACTION_CANCEL_GENERATION\" /></intent-filter></receiver>'
           assert '</application>' in content, 'Khong tim thay the dong </application> trong Manifest'
-          content = content.replace('</application>', service_tag + '</application>')
+          content = content.replace('</application>', service_tag + receiver_tag + '</application>')
           open(path, 'w').write(content)
-          print('=== Noi dung AndroidManifest.xml SAU khi them service ===')
+          print('=== Noi dung AndroidManifest.xml SAU khi them service+receiver ===')
           print(content)
           "
 
